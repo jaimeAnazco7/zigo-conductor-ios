@@ -22,6 +22,7 @@ workflows:
           xcode-project use-profiles
       - name: Get Flutter packages
         script: |
+          flutter config --no-enable-swift-package-manager
           rm -f ios/Flutter/Generated.xcconfig ios/Flutter/flutter_export_environment.sh
           flutter pub get
       - name: Install CocoaPods dependencies
