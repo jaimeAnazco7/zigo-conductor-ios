@@ -80,7 +80,7 @@ dependencies:
       url: https://github.com/appmeetmighty/flutter-braintree.git
   rxdart: ^0.28.0
   # PUSH NOTIFICATION
-  onesignal_flutter: ^5.2.4
+  onesignal_flutter: 5.3.5
   #SOCIAL LOGIN
   google_sign_in: ^6.2.1
   the_apple_sign_in: ^1.1.1
