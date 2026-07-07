@@ -1,0 +1,102 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"
+}
+
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader('UTF-8') { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
+def flutterRoot = localProperties.getProperty('flutter.sdk')
+if (flutterRoot == null) {
+    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
+}
+
+android {
+    namespace = "com.zigotaxi.driver"
+    compileSdkVersion 36
+    ndkVersion "27.0.12077973"
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    defaultConfig {
+        applicationId "com.zigotaxi.driver"
+        minSdkVersion 24
+        targetSdkVersion 36
+        versionCode 30
+        versionName '7.0.5'
+        multiDexEnabled true
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+    buildToolsVersion '35.0.0'
+}
+
+flutter {
+    source '../..'
+}
+
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation platform('com.google.firebase:firebase-bom:33.1.2')
+    implementation("com.google.firebase:firebase-crashlytics")
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation('com.braintreepayments.api:drop-in:5.2.1') {
+        exclude group: "org.jfrog.cardinalcommerce.gradle", module: "cardinalmobilesdk"
+    }
+    implementation("org.jfrog.cardinalcommerce.gradle:cardinalmobilesdk:2.2.7-2")
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core-ktx:1.6.0'
+        // Forzar versión compatible de Kotlin
+        force "org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.0"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0"
+    }
+}

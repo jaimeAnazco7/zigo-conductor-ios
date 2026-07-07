@@ -1,0 +1,71 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <!-- Storage legacy: solo Android 12 y anteriores; en 13+ se usa Photo Picker / SAF -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:ignore="ScopedStorage" />
+    <!-- Política Google Play: sin acceso amplio a galería (image_picker / file_picker usan selector del sistema) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+
+   <application
+        android:label="Zigo Conductor"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:extractNativeLibs="true"
+        tools:replace="android:label">
+       <meta-data
+           android:name="com.google.android.geo.API_KEY"
+           android:value="AIzaSyCXn1MGy_9obvgjtwc9hu5HhZ5bEGEas60" />
+        <!-- OneSignal: icono pequeño de notificación (silueta blanca, no el launcher) -->
+        <meta-data
+            android:name="com.onesignal.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_onesignal_default" />
+        <meta-data
+            android:name="com.onesignal.NotificationSmallIcon"
+            android:resource="@drawable/ic_stat_onesignal_default" />
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+       <activity
+           android:exported="true"
+           android:name="com.braintreepayments.api.DropInActivity"
+           android:launchMode="singleTask">
+           <intent-filter>
+               <action android:name="android.intent.action.VIEW" />
+
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+
+               <data android:scheme="com.example.flutterbraintreeexample.braintree" />
+           </intent-filter>
+       </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>

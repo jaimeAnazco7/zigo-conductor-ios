@@ -1,0 +1,70 @@
+buildscript {
+    ext.kotlin_version = '2.2.0'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.google.gms:google-services:4.4.2'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url 'https://oss.sonatype.org/content/repositories/snapshots/'
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin') {
+                details.useVersion "2.2.0"
+            }
+        }
+    }
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            // Set Android specific configurations inside the android block
+            project.android {
+                if (namespace == null) {
+                    def manifestFile = project.file("src/main/AndroidManifest.xml")
+                    if (manifestFile.exists()) {
+                        try {
+                            def xml = new XmlParser().parse(manifestFile)
+                            namespace = xml.@package
+                        } catch (Exception e) {
+                            namespace = project.group
+                        }
+                    } else {
+                        namespace = project.group
+                    }
+                }
+            }
+        }
+        // Deshabilitar compilación incremental de Kotlin para evitar problemas con diferentes unidades de disco
+        project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+            incremental = false
+        }
+    }
+}
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.evaluationDependsOn(':app')
+}
+
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
