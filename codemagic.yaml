@@ -23,12 +23,14 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter config --no-enable-swift-package-manager
+          flutter clean
           rm -f ios/Flutter/Generated.xcconfig ios/Flutter/flutter_export_environment.sh
           flutter pub get
       - name: Install CocoaPods dependencies
         script: |
           cd ios
           rm -rf Pods Podfile.lock
+          pod cache clean --all
           pod install --repo-update
       - name: Flutter build IPA
         script: |
