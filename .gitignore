@@ -1,6 +1,5 @@
 /.flutter-plugins
 /.flutter-plugins-dependencies
-/pubspec.lock
 /android/local.properties
 /android/key.properties
 /android/app/zigo-driver-upload.jks

@@ -28,6 +28,7 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios
+          pod repo update
           rm -rf Pods Podfile.lock
           pod install --repo-update
       - name: Flutter build IPA
