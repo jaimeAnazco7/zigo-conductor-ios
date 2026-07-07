@@ -80,7 +80,7 @@ dependencies:
       url: https://github.com/appmeetmighty/flutter-braintree.git
   rxdart: ^0.28.0
   # PUSH NOTIFICATION
-  onesignal_flutter: 5.3.2
+  onesignal_flutter: ^5.2.4
   #SOCIAL LOGIN
   google_sign_in: ^6.2.1
   the_apple_sign_in: ^1.1.1
@@ -114,8 +114,7 @@ dependency_overrides:
 
 
 flutter:
-  config:
-    enable-swift-package-manager: false
+
   uses-material-design: true
 
   assets:
