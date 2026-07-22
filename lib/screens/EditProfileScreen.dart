@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:taxi_driver/screens/DashboardScreen.dart';
 
 import '../../main.dart';
 import '../../utils/Common.dart';
@@ -20,7 +19,6 @@ import '../utils/Extensions/app_common.dart';
 import '../utils/Extensions/app_textfield.dart';
 import '../utils/Extensions/dataTypeExtensions.dart';
 import '../utils/Images.dart';
-import 'DocumentsScreen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final bool isGoogle;
@@ -71,7 +69,7 @@ class EditProfileScreenState extends State<EditProfileScreen> {
     appStore.setLoading(true);
     if (widget.isGoogle) {
       await getServices().then((value) {
-        listServices.addAll(value.data!);
+        listServices.addAll(sortZigoServices(value.data ?? []));
         setState(() {});
       }).catchError((error) {
         log(error.toString());
@@ -166,41 +164,40 @@ class EditProfileScreenState extends State<EditProfileScreen> {
     if (formKey.currentState!.validate()) {
       formKey.currentState!.save();
       appStore.setLoading(true);
-      await updateProfile(
-        uid: sharedPref.getString(UID).toString(),
-        file: imageProfile != null ? File(imageProfile!.path.validate()) : null,
-        contactNumber: widget.isGoogle == true ? '${countryCode.validate()}${contactNumberController.text.trim()}' : contactNumberController.text.trim(),
-        address: addressController.text.trim(),
-        firstName: firstNameController.text.trim(),
-        lastName: lastNameController.text.trim(),
-        userEmail: emailController.text.trim(),
-        carColor: carColorController.text.trim(),
-        carModel: carModelController.text.trim(),
-        carPlateNumber: carPlateNumberController.text.trim(),
-        carProduction: carProductionYearController.text.trim(),
-        serviceId: selectedService,
-        country_code: countryCode,
-        allyReferralCode: widget.isGoogle ? allyReferralController.text : null,
-      ).then((_) async {
+      final bool uploadedNewPhoto = imageProfile != null;
+      try {
+        await updateProfile(
+          uid: sharedPref.getString(UID).toString(),
+          file: uploadedNewPhoto ? File(imageProfile!.path.validate()) : null,
+          contactNumber: widget.isGoogle == true ? '${countryCode.validate()}${contactNumberController.text.trim()}' : contactNumberController.text.trim(),
+          address: addressController.text.trim(),
+          firstName: firstNameController.text.trim(),
+          lastName: lastNameController.text.trim(),
+          userEmail: emailController.text.trim(),
+          carColor: carColorController.text.trim(),
+          carModel: carModelController.text.trim(),
+          carPlateNumber: carPlateNumberController.text.trim(),
+          carProduction: carProductionYearController.text.trim(),
+          serviceId: selectedService,
+          country_code: countryCode,
+          allyReferralCode: widget.isGoogle ? allyReferralController.text : null,
+        );
+        if (uploadedNewPhoto) {
+          await sharedPref.setInt(IS_PROFILE_PHOTO_REQUIRED, 0);
+        }
         appStore.setLoading(false);
         toast(language.profileUpdateMsg);
         if (widget.isGoogle == true) {
           updateProfileUid();
         }
-        if (shouldNavigateToProfilePhotoScreen()) {
-          return;
-        }
         if (!context.mounted) return;
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context);
-        } else {
-          await launchDriverPostLoginScreen(context, isNewTask: true);
-        }
-      }).catchError((error) {
-        // throw error;
+        // Siempre continuar el flujo (Documentos o Home). Evita quedarse en Editar perfil (iOS).
+        await launchDriverPostLoginScreen(context, isNewTask: true);
+      } catch (error) {
         appStore.setLoading(false);
         log(error.toString());
-      });
+        toast(error.toString());
+      }
     }
   }
 
@@ -213,13 +210,31 @@ class EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: neonBackground,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(language.profile, style: boldTextStyle(color: appTextPrimaryColorWhite)),
+        iconTheme: IconThemeData(color: appTextPrimaryColorWhite),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new, color: appTextPrimaryColorWhite, size: 20),
+          onPressed: () async {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              await launchDriverPostLoginScreen(context, isNewTask: true);
+            }
+          },
+        ),
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: EdgeInsets.only(left: 16, top: 30, right: 16, bottom: 16),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+              left: 16,
+              top: 30,
+              right: 16,
+              bottom: 24 + MediaQuery.of(context).padding.bottom,
+            ),
             child: Form(
               key: formKey,
               child: Column(
@@ -248,6 +263,7 @@ class EditProfileScreenState extends State<EditProfileScreen> {
                                 onPressed: () {
                                   showModalBottomSheet(
                                     context: context,
+                                    backgroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.only(topLeft: Radius.circular(defaultRadius), topRight: Radius.circular(defaultRadius))),
                                     builder: (_) {
                                       return Padding(
@@ -552,6 +568,17 @@ class EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                       ],
                     ),
+                  SizedBox(height: 24),
+                  AppButtonWidget(
+                    text: language.updateProfile,
+                    onTap: () {
+                      if (sharedPref.getString(USER_EMAIL) == 'mark80@gmail.com') {
+                        toast(language.demoMsg);
+                      } else {
+                        saveProfile();
+                      }
+                    },
+                  ),
                 ],
               ),
             ),
@@ -565,23 +592,6 @@ class EditProfileScreenState extends State<EditProfileScreen> {
             },
           ),
         ],
-      ),
-      bottomNavigationBar: SafeScaffoldBottomBar(
-        child: Container(
-          color: neonBackground,
-          width: double.infinity,
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: AppButtonWidget(
-            text: language.updateProfile,
-            onTap: () {
-              if (sharedPref.getString(USER_EMAIL) == 'mark80@gmail.com') {
-                toast(language.demoMsg);
-              } else {
-                saveProfile();
-              }
-            },
-          ),
-        ),
       ),
     );
   }

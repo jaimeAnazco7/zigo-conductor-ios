@@ -815,6 +815,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       chatMessageService.exportChat(rideId: servicesListData!.id.toString(), senderId: sharedPref.getString(UID).validate(), receiverId: riderData!.uid.validate());
       appStore.setLoading(false);
       log(error.toString());
+      toast(error.toString());
     });
   }
 
@@ -1585,62 +1586,6 @@ class DashboardScreenState extends State<DashboardScreen> {
                                                   )
                                                 : SizedBox(),
                                             if (servicesListData!.status == IN_PROGRESS && servicesListData != null && servicesListData!.otherRiderData != null) SizedBox(height: 8),
-                                            if (servicesListData!.status == IN_PROGRESS)
-                                              if (appStore.extraChargeValue != null)
-                                                Observer(builder: (context) {
-                                                  return Visibility(
-                                                    visible: int.parse(appStore.extraChargeValue!) != 0,
-                                                    child: inkWellWidget(
-                                                      onTap: () async {
-                                                        List<ExtraChargeRequestModel>? extraChargeListData = await showModalBottomSheet(
-                                                          isScrollControlled: true,
-                                                          shape: RoundedRectangleBorder(
-                                                              borderRadius: BorderRadius.only(topLeft: Radius.circular(defaultRadius), topRight: Radius.circular(defaultRadius))),
-                                                          context: context,
-                                                          builder: (_) {
-                                                            return Padding(
-                                                              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-                                                              child: ExtraChargesWidget(data: extraChargeList),
-                                                            );
-                                                          },
-                                                        );
-                                                        if (extraChargeListData != null) {
-                                                          log("extraChargeListData   $extraChargeListData");
-                                                          extraChargeAmount = 0;
-                                                          extraChargeList.clear();
-                                                          extraChargeListData.forEach((element) {
-                                                            extraChargeAmount = extraChargeAmount + element.value!;
-                                                            extraChargeList = extraChargeListData;
-                                                          });
-                                                        }
-                                                      },
-                                                      child: Column(
-                                                        children: [
-                                                          Padding(
-                                                            padding: EdgeInsets.only(bottom: 8),
-                                                            child: Container(
-                                                              child: Row(
-                                                                mainAxisSize: MainAxisSize.max,
-                                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                                children: [
-                                                                  if (extraChargeAmount != 0)
-                                                                    Row(
-                                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                                      children: [
-                                                                        Text('${language.extraCharges} : ', style: secondaryTextStyle(color: neonHighlight)),
-                                                                        printAmountWidget(
-                                                                            amount: '${extraChargeAmount.toStringAsFixed(digitAfterDecimal)}', size: 14, color: neonAccent, weight: FontWeight.normal)
-                                                                      ],
-                                                                    ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  );
-                                                }),
                                             buttonWidget()
                                           ],
                                         ),
@@ -1729,9 +1674,87 @@ class DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> getUserLocation() async {
-    List<Placemark> placemarks = await placemarkFromCoordinates(driverLocation!.latitude, driverLocation!.longitude);
-    Placemark place = placemarks[0];
-    endLocationAddress = '${place.street},${place.subLocality},${place.thoroughfare},${place.locality}';
+    try {
+      if (driverLocation == null) {
+        endLocationAddress = servicesListData?.endAddress.validate() ?? '';
+        return;
+      }
+
+      final placemarks = await placemarkFromCoordinates(driverLocation!.latitude, driverLocation!.longitude)
+          .timeout(const Duration(seconds: 12));
+      if (placemarks.isNotEmpty) {
+        final place = placemarks[0];
+        endLocationAddress = '${place.street},${place.subLocality},${place.thoroughfare},${place.locality}';
+      } else {
+        endLocationAddress = '${driverLocation!.latitude},${driverLocation!.longitude}';
+      }
+    } catch (e) {
+      log('getUserLocation: $e');
+      if (driverLocation != null) {
+        endLocationAddress = '${driverLocation!.latitude},${driverLocation!.longitude}';
+      } else {
+        endLocationAddress = servicesListData?.endAddress.validate() ?? '';
+      }
+    }
+  }
+
+  bool _extraChargesEnabled() {
+    return appStore.extraChargeValue != null && int.tryParse(appStore.extraChargeValue!) != 0;
+  }
+
+  bool _isReadyToFinishRide() {
+    if (servicesListData?.status != IN_PROGRESS) return false;
+    if (servicesListData!.multiDropLocation != null &&
+        servicesListData!.multiDropLocation!.isNotEmpty &&
+        servicesListData!.multiDropLocation!.where((element) => element.droppedAt == null).length > 1) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _pickExtraCharges() async {
+    final extraChargeListData = await showModalBottomSheet<List<ExtraChargeRequestModel>>(
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.only(topLeft: Radius.circular(defaultRadius), topRight: Radius.circular(defaultRadius))),
+      context: context,
+      builder: (_) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: ExtraChargesWidget(data: extraChargeList),
+        );
+      },
+    );
+    if (extraChargeListData != null) {
+      extraChargeAmount = 0;
+      extraChargeList.clear();
+      for (final element in extraChargeListData) {
+        extraChargeAmount = extraChargeAmount + element.value!;
+        extraChargeList = extraChargeListData;
+      }
+      setState(() {});
+    }
+  }
+
+  Future<void> _finishRideAfterConfirm() async {
+    if (driverLocation == null) {
+      toast('No se pudo obtener la ubicación. Intente nuevamente.');
+      return;
+    }
+
+    try {
+      await getUserLocation();
+      totalDistance = calculateDistance(
+        double.parse(servicesListData!.startLatitude.validate()),
+        double.parse(servicesListData!.startLongitude.validate()),
+        driverLocation!.latitude,
+        driverLocation!.longitude,
+      );
+      await completeRideRequest();
+    } catch (e) {
+      appStore.setLoading(false);
+      log('finishRide: $e');
+      toast(e.toString());
+    }
   }
 
   /// Aviso de perfil en revisión: debajo de la barra superior (menú / estado / notificaciones), no encima del pill offline/online.
@@ -1907,6 +1930,68 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   Widget buttonWidget() {
     final ShapeBorder outlineNeon = RoundedRectangleBorder(borderRadius: BorderRadius.circular(defaultRadius), side: BorderSide(color: neonAccent, width: 1));
+
+    if (_isReadyToFinishRide()) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppButtonWidget(
+            text: buttonText(status: servicesListData!.status),
+            color: neonAccent,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ImageIcon(
+                  AssetImage(statusTypeIconForButton(type: servicesListData!.status.validate())),
+                  color: neonOnAccent,
+                  size: 18,
+                ),
+                SizedBox(width: 4),
+                Text(buttonText(status: servicesListData!.status), style: boldTextStyle(color: neonOnAccent)),
+              ],
+            ),
+            textStyle: boldTextStyle(color: neonOnAccent),
+            onTap: () => _handleRideActionButtonTap(),
+          ),
+          if (_extraChargesEnabled()) ...[
+            SizedBox(height: 8),
+            if (extraChargeAmount != 0)
+              Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Text('${language.extraCharges}: ', style: secondaryTextStyle(color: neonHighlight)),
+                    printAmountWidget(
+                      amount: extraChargeAmount.toStringAsFixed(digitAfterDecimal),
+                      size: 14,
+                      color: neonAccent,
+                      weight: FontWeight.normal,
+                    ),
+                  ],
+                ),
+              ),
+            AppButtonWidget(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add, size: 14, color: neonAccent),
+                  SizedBox(width: 4),
+                  Text(language.extraFees, style: boldTextStyle(color: neonAccent)),
+                ],
+              ),
+              text: language.extraFees,
+              textColor: neonAccent,
+              color: neonSurfaceCard,
+              shapeBorder: outlineNeon,
+              onTap: _pickExtraCharges,
+            ),
+          ],
+        ],
+      );
+    }
+
     return Row(
       children: [
         if (servicesListData!.status != IN_PROGRESS)
@@ -1936,7 +2021,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                   }),
             ),
           ),
-        if (servicesListData!.status == IN_PROGRESS)
+        if (servicesListData!.status == IN_PROGRESS && _extraChargesEnabled())
           Expanded(
             flex: 0,
             child: Padding(
@@ -1958,33 +2043,11 @@ class DashboardScreenState extends State<DashboardScreen> {
                       )
                     ],
                   ),
-                  // width: MediaQuery.of(context).size.width,
                   text: language.extraFees,
                   textColor: neonAccent,
                   color: neonSurfaceCard,
                   shapeBorder: outlineNeon,
-                  onTap: () async {
-                    List<ExtraChargeRequestModel>? extraChargeListData = await showModalBottomSheet(
-                      isScrollControlled: true,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.only(topLeft: Radius.circular(defaultRadius), topRight: Radius.circular(defaultRadius))),
-                      context: context,
-                      builder: (_) {
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-                          child: ExtraChargesWidget(data: extraChargeList),
-                        );
-                      },
-                    );
-                    if (extraChargeListData != null) {
-                      log("extraChargeListData   $extraChargeListData");
-                      extraChargeAmount = 0;
-                      extraChargeList.clear();
-                      extraChargeListData.forEach((element) {
-                        extraChargeAmount = extraChargeAmount + element.value!;
-                        extraChargeList = extraChargeListData;
-                      });
-                    }
-                  }),
+                  onTap: _pickExtraCharges),
             ),
           ),
         Expanded(
@@ -2023,162 +2086,166 @@ class DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             textStyle: boldTextStyle(color: neonOnAccent),
-            onTap: () async {
-              if (await checkPermission()) {
-                if (servicesListData!.status == ACCEPTED || servicesListData!.status == BID_ACCEPTED) {
-                  showConfirmDialogCustom(
-                      primaryColor: primaryColor,
-                      positiveText: language.yes,
-                      negativeText: language.no,
-                      dialogType: DialogType.CONFIRMATION,
-                      title: language.areYouSureYouWantToArriving,
-                      context, onAccept: (v) {
-                    rideRequest(status: ARRIVING);
-                  });
-                } else if (servicesListData!.status == ARRIVING) {
-                  showConfirmDialogCustom(
-                      primaryColor: primaryColor,
-                      positiveText: language.yes,
-                      negativeText: language.no,
-                      dialogType: DialogType.CONFIRMATION,
-                      title: language.areYouSureYouWantToArrived,
-                      context, onAccept: (v) {
-                    rideRequest(status: ARRIVED);
-                  });
-                } else if (servicesListData!.status == ARRIVED) {
-                  otpController.clear();
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (_) {
-                      return AlertDialog(
-                        content: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(language.enterOtp, style: boldTextStyle(), textAlign: TextAlign.center),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: inkWellWidget(
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                    },
-                                    child: Container(
-                                      padding: EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-                                      child: Icon(Icons.close, size: 20, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 16),
-                            Text(language.startRideAskOTP, style: secondaryTextStyle(size: 12), textAlign: TextAlign.center),
-                            SizedBox(height: 16),
-                            Center(
-                              child: Pinput(
-                                keyboardType: TextInputType.number,
-                                readOnly: false,
-                                autofocus: true,
-                                length: 4,
-                                onTap: () {},
-                                onLongPress: () {},
-                                cursor: Text(
-                                  "|",
-                                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
-                                ),
-                                focusedPinTheme: PinTheme(
-                                  width: 40,
-                                  height: 44,
-                                  textStyle: TextStyle(
-                                    fontSize: 18,
-                                  ),
-                                  decoration: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.all(Radius.circular(8)), border: Border.all(color: primaryColor)),
-                                ),
-                                toolbarEnabled: true,
-                                useNativeKeyboard: true,
-                                defaultPinTheme: PinTheme(
-                                  width: 40,
-                                  height: 44,
-                                  textStyle: TextStyle(
-                                    fontSize: 18,
-                                  ),
-                                  decoration: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.all(Radius.circular(8)), border: Border.all(color: dividerColor)),
-                                ),
-                                isCursorAnimationEnabled: true,
-                                showCursor: true,
-                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                closeKeyboardWhenCompleted: false,
-                                enableSuggestions: false,
-                                autofillHints: [],
-                                controller: otpController,
-                                onCompleted: (val) {
-                                  otpCheck = val;
-                                },
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            AppButtonWidget(
-                              width: MediaQuery.of(context).size.width,
-                              text: language.confirm,
-                              onTap: () {
-                                if (otpCheck == null || otpCheck != servicesListData!.otp) {
-                                  return toast(language.pleaseEnterValidOtp);
-                                } else {
-                                  Navigator.pop(context);
-                                  rideRequest(status: IN_PROGRESS);
-                                }
-                              },
-                            )
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                } else if (servicesListData!.status == IN_PROGRESS) {
-                  // check is all drop location passed
-                  if (servicesListData!.multiDropLocation != null &&
-                          servicesListData!.multiDropLocation!.isNotEmpty &&
-                          servicesListData!.multiDropLocation!.where((element) => element.droppedAt == null).length > 1
-                      // servicesListData!.multiDropLocation!.any((element) => element.droppedAt == null)
-                      ) {
-                    for (int i = 0; i < servicesListData!.multiDropLocation!.length; i++) {
-                      if (servicesListData!.multiDropLocation![i].droppedAt == null) {
-                        await dropOupUpdate(rideId: '${servicesListData!.id}', dropIndex: '${servicesListData!.multiDropLocation![i].drop}').then(
-                          (v) {
-                            servicesListData!.multiDropLocation![i].droppedAt = DateTime.now().toString();
-                            if (v != null && v['message'] != null) {
-                              toast(v['message'].toString());
-                            }
-                          },
-                        );
-                        getCurrentRequest();
-                        break;
-                      }
-                    }
-                    setMapPins();
-                    // showDropLocationsDialog(context);
-                  } else {
-                    showConfirmDialogCustom(primaryColor: primaryColor, dialogType: DialogType.ACCEPT, title: language.finishMsg, context, positiveText: language.yes, negativeText: language.no,
-                        onAccept: (v) {
-                      appStore.setLoading(true);
-                      getUserLocation().then((value2) async {
-                        totalDistance = calculateDistance(
-                            double.parse(servicesListData!.startLatitude.validate()), double.parse(servicesListData!.startLongitude.validate()), driverLocation!.latitude, driverLocation!.longitude);
-                        await completeRideRequest();
-                      });
-                    });
-                  }
-                }
-              }
-            },
+            onTap: () => _handleRideActionButtonTap(),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _handleRideActionButtonTap() async {
+    if (!await checkPermission()) return;
+
+    if (servicesListData!.status == ACCEPTED || servicesListData!.status == BID_ACCEPTED) {
+      showConfirmDialogCustom(
+        primaryColor: primaryColor,
+        positiveText: language.yes,
+        negativeText: language.no,
+        dialogType: DialogType.CONFIRMATION,
+        title: language.areYouSureYouWantToArriving,
+        context,
+        onAccept: (v) {
+          rideRequest(status: ARRIVING);
+        },
+      );
+    } else if (servicesListData!.status == ARRIVING) {
+      showConfirmDialogCustom(
+        primaryColor: primaryColor,
+        positiveText: language.yes,
+        negativeText: language.no,
+        dialogType: DialogType.CONFIRMATION,
+        title: language.areYouSureYouWantToArrived,
+        context,
+        onAccept: (v) {
+          rideRequest(status: ARRIVED);
+        },
+      );
+    } else if (servicesListData!.status == ARRIVED) {
+      otpController.clear();
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) {
+          return AlertDialog(
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(language.enterOtp, style: boldTextStyle(), textAlign: TextAlign.center),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: inkWellWidget(
+                        onTap: () {
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          padding: EdgeInsets.all(4),
+                          decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
+                          child: Icon(Icons.close, size: 20, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16),
+                Text(language.startRideAskOTP, style: secondaryTextStyle(size: 12), textAlign: TextAlign.center),
+                SizedBox(height: 16),
+                Center(
+                  child: Pinput(
+                    keyboardType: TextInputType.number,
+                    readOnly: false,
+                    autofocus: true,
+                    length: 4,
+                    onTap: () {},
+                    onLongPress: () {},
+                    cursor: Text(
+                      "|",
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+                    ),
+                    focusedPinTheme: PinTheme(
+                      width: 40,
+                      height: 44,
+                      textStyle: TextStyle(
+                        fontSize: 18,
+                      ),
+                      decoration: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.all(Radius.circular(8)), border: Border.all(color: primaryColor)),
+                    ),
+                    toolbarEnabled: true,
+                    useNativeKeyboard: true,
+                    defaultPinTheme: PinTheme(
+                      width: 40,
+                      height: 44,
+                      textStyle: TextStyle(
+                        fontSize: 18,
+                      ),
+                      decoration: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.all(Radius.circular(8)), border: Border.all(color: dividerColor)),
+                    ),
+                    isCursorAnimationEnabled: true,
+                    showCursor: true,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    closeKeyboardWhenCompleted: false,
+                    enableSuggestions: false,
+                    autofillHints: [],
+                    controller: otpController,
+                    onCompleted: (val) {
+                      otpCheck = val;
+                    },
+                  ),
+                ),
+                SizedBox(height: 16),
+                AppButtonWidget(
+                  width: MediaQuery.of(context).size.width,
+                  text: language.confirm,
+                  onTap: () {
+                    if (otpCheck == null || otpCheck != servicesListData!.otp) {
+                      return toast(language.pleaseEnterValidOtp);
+                    } else {
+                      Navigator.pop(context);
+                      rideRequest(status: IN_PROGRESS);
+                    }
+                  },
+                )
+              ],
+            ),
+          );
+        },
+      );
+    } else if (servicesListData!.status == IN_PROGRESS) {
+      if (servicesListData!.multiDropLocation != null &&
+          servicesListData!.multiDropLocation!.isNotEmpty &&
+          servicesListData!.multiDropLocation!.where((element) => element.droppedAt == null).length > 1) {
+        for (int i = 0; i < servicesListData!.multiDropLocation!.length; i++) {
+          if (servicesListData!.multiDropLocation![i].droppedAt == null) {
+            await dropOupUpdate(rideId: '${servicesListData!.id}', dropIndex: '${servicesListData!.multiDropLocation![i].drop}').then(
+              (v) {
+                servicesListData!.multiDropLocation![i].droppedAt = DateTime.now().toString();
+                if (v != null && v['message'] != null) {
+                  toast(v['message'].toString());
+                }
+              },
+            );
+            getCurrentRequest();
+            break;
+          }
+        }
+        setMapPins();
+      } else {
+        showConfirmDialogCustom(
+          primaryColor: primaryColor,
+          dialogType: DialogType.ACCEPT,
+          title: language.finishMsg,
+          context,
+          positiveText: language.yes,
+          negativeText: language.no,
+          onAccept: (v) {
+            _finishRideAfterConfirm();
+          },
+        );
+      }
+    }
   }
 
   Widget addressDisplayWidget(

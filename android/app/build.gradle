@@ -49,8 +49,8 @@ android {
         applicationId "com.zigotaxi.driver"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 30
-        versionName '7.0.5'
+        versionCode flutter.versionCode
+        versionName flutter.versionName
         multiDexEnabled true
     }
 

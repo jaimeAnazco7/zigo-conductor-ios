@@ -195,11 +195,10 @@ class DocumentsScreenState extends State<DocumentsScreen> {
   getMultipleFile(int? docId, int? isExpire, {int? updateId, DateTime? dateTime}) async {
     showModalBottomSheet(
       context: context,
-      backgroundColor: neonBackground,
+      backgroundColor: Colors.white,
       barrierColor: Colors.black54,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.only(topLeft: Radius.circular(defaultRadius), topRight: Radius.circular(defaultRadius)),
-        side: BorderSide(color: neonAccent.withOpacity(0.35), width: 1),
       ),
       builder: (_) {
         return StatefulBuilder(

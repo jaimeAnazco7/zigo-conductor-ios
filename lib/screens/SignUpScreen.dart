@@ -94,7 +94,7 @@ class SignUpScreenState extends State<SignUpScreen> {
       });
     }
     await getServices().then((value) {
-      listServices.addAll(value.data!);
+      listServices.addAll(sortZigoServices(value.data ?? []));
       setState(() {});
     }).catchError((error) {
       log(error.toString());

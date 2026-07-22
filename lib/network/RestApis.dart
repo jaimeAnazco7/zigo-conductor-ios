@@ -132,21 +132,25 @@ Future<MultipartRequest> getMultiPartRequest(String endPoint, {String? baseUrl})
 Future sendMultiPartRequest(MultipartRequest multiPartRequest, {Function(dynamic)? onSuccess, Function(dynamic)? onError}) async {
   multiPartRequest.headers.addAll(buildHeaderTokens());
 
-  await multiPartRequest.send().then((res) {
+  try {
+    final res = await multiPartRequest.send();
+    final value = await res.stream.bytesToString();
     if (res.statusCode == 200) {
-      res.stream.transform(Utf8Decoder()).transform(LineSplitter()).listen((value) {
-        if (value.contains("Server Error")) {
-          onError?.call("Server Error");
-        } else {
-          onSuccess?.call(jsonDecode(value));
+      if (value.contains("Server Error")) {
+        onError?.call("Server Error");
+      } else {
+        final decoded = jsonDecode(value);
+        final result = onSuccess?.call(decoded);
+        if (result is Future) {
+          await result;
         }
-      });
+      }
     } else {
       onError?.call(res.statusCode.toString());
     }
-  }).catchError((error) {
+  } catch (error) {
     onError?.call(error.toString());
-  });
+  }
 }
 
 /// Profile Update
@@ -189,6 +193,7 @@ Future updateProfile(
 
   if (file != null) multiPartRequest.files.add(await MultipartFile.fromPath('profile_image', file.path));
 
+  Object? requestError;
   await sendMultiPartRequest(multiPartRequest, onSuccess: (data) async {
     if (data != null) {
       ProfileUpdate res = ProfileUpdate.fromJson(data);
@@ -200,11 +205,20 @@ Future updateProfile(
         await sharedPref.setString(CONTACT_NUMBER, res.data!.contactNumber.validate());
         await sharedPref.setString(GENDER, res.data!.gender.validate());
         await appStore.setUserEmail(res.data!.email.validate());
+        await appStore.setFirstName(res.data!.firstName.validate());
+
         final uploadedPhoto = file != null;
         final photoUrl = normalizeDriverProfileUrl(res.data!.profileImage);
         if (uploadedPhoto || photoUrl.isNotEmpty) {
           if (photoUrl.isNotEmpty) {
-            await appStore.setUserProfile(res.data!.profileImage.validate());
+            final oldUrl = appStore.userProfile;
+            await evictDriverProfilePhotoCache(oldUrl);
+            await evictDriverProfilePhotoCache(photoUrl);
+            // Misma URL del servidor → bust de caché para que el menú muestre la foto nueva
+            final cacheBusted = photoUrl.contains('?')
+                ? '$photoUrl&v=${DateTime.now().millisecondsSinceEpoch}'
+                : '$photoUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+            await appStore.setUserProfile(cacheBusted);
           }
           await sharedPref.setInt(IS_PROFILE_PHOTO_REQUIRED, 0);
         }
@@ -212,7 +226,11 @@ Future updateProfile(
     }
   }, onError: (error) {
     toast(error.toString());
+    requestError = error;
   });
+  if (requestError != null) {
+    throw requestError!;
+  }
 }
 
 Future<void> logout({bool isDelete = false}) async {

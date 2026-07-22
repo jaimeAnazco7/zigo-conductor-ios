@@ -28,6 +28,7 @@ import '../Services/RideService.dart';
 import '../model/FRideBookingModel.dart';
 import '../model/RideDetailModel.dart';
 import '../model/RiderModel.dart';
+import '../model/ServiceModel.dart';
 import '../model/UserDetailModel.dart';
 import '../network/RestApis.dart';
 import '../screens/ChatScreen.dart';
@@ -200,6 +201,19 @@ Widget commonCachedNetworkImage(
   }
 }
 
+/// Limpia la caché de foto de perfil para que el menú muestre la imagen nueva.
+Future<void> evictDriverProfilePhotoCache(String? url) async {
+  final u = (url ?? '').trim();
+  if (u.isEmpty || !u.startsWith('http')) return;
+  try {
+    await CachedNetworkImage.evictFromCache(u);
+    final withoutQuery = u.split('?').first;
+    if (withoutQuery != u) {
+      await CachedNetworkImage.evictFromCache(withoutQuery);
+    }
+  } catch (_) {}
+}
+
 BoxFit _placeholderFitForAsset(String? asset, BoxFit? requested) {
   if (asset == driverDefaultAvatar) return BoxFit.contain;
   return requested ?? BoxFit.cover;
@@ -339,6 +353,25 @@ double calculateDistance(lat1, lon1, lat2, lon2) {
   var p = 0.017453292519943295;
   var a = 0.5 - cos((lat2 - lat1) * p) / 2 + cos(lat1 * p) * cos(lat2 * p) * (1 - cos((lon2 - lon1) * p)) / 2;
   return (12742 * asin(sqrt(a))).toStringAsFixed(digitAfterDecimal).toDouble();
+}
+
+/// Orden de servicios Zigo en registro/selección: Eco → Comfort → XL.
+List<ServiceList> sortZigoServices(List<ServiceList> services) {
+  int rank(String? name) {
+    final n = (name ?? '').toLowerCase();
+    if (n.contains('eco')) return 0;
+    if (n.contains('comfort')) return 1;
+    if (n.contains('xl')) return 2;
+    return 99;
+  }
+
+  final sorted = List<ServiceList>.from(services);
+  sorted.sort((a, b) {
+    final byRank = rank(a.name).compareTo(rank(b.name));
+    if (byRank != 0) return byRank;
+    return (a.name ?? '').compareTo(b.name ?? '');
+  });
+  return sorted;
 }
 
 Widget totalCount({String? title, num? amount, bool? isTotal = false, double? space, bool styleNeon = false}) {
